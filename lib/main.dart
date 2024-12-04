@@ -335,7 +335,8 @@ class newTaskPage extends StatelessWidget
                   "desc" : _descController.text,
                   "deadline" : deadline,
                   "priority" : priority,
-                  "type" : type
+                  "type" : type,
+                  "status" : "pending"
                 }
               );
               Navigator.pop(context);
@@ -362,6 +363,39 @@ class taskPage extends StatefulWidget
 }
 
 class _taskPageState extends State<taskPage> {
+
+  TextEditingController _commentController = TextEditingController();
+
+  String convertPriority(int value)
+  {
+    if(value == 0)
+    {
+      return "low";
+    }
+    else if(value == 1)
+    {
+      return "medium";
+    }
+    else if(value == 2)
+    {
+      return "high";
+    }
+    else throw Exception("wrong priority value");
+  }
+
+  String convertType(int value)
+  {
+    if(value == 0)
+    {
+      return "Project";
+    }
+    else if(value == 1)
+    {
+      return "List";
+    }
+    else throw Exception("wrong priority value");
+  }
+
   @override
   Widget build(BuildContext context) {
 
@@ -369,37 +403,132 @@ class _taskPageState extends State<taskPage> {
     (
       body: Center
       (
-        child: Column
+        child: Flex
         (
+          direction: Axis.vertical,
           children: 
           [
             ElevatedButton(onPressed: (){Navigator.pop(context);}, child: Text("return")),
-            Spacer(),
             Text("description:"),
             Text(widget.data.data()!["desc"]),
             Text("deadline:"),
             Text((widget.data.data()!["deadline"] as Timestamp).toDate().toString()),
-            Text("priority:"),
-            Text(widget.data.data()!["priority"].toString()),
-            Text("type:"),
-            Text(widget.data.data()!["type"].toString()),
-            Spacer(),
+            Text("priority: ${convertPriority(widget.data.data()!["priority"])}"),
+            Text("type: ${convertType(widget.data.data()!["type"])}"),
+            (widget.data["ID"] != FirebaseAuth.instance.currentUser!.uid)?
+            Row
+            (
+              children: 
+              [
+                Spacer(),
+                TextButton(onPressed: ()
+                async {
+                }, child: Card(child: Text("pending"), color: (widget.data["status"] == "pending")? Colors.red: Colors.white)),
+                Spacer(),
+                TextButton(onPressed: ()
+                async {
+                }, child: Card(child: Text("in progress"), color: (widget.data["status"] == "in progress")? Colors.red: Colors.white)),
+                Spacer(),
+                TextButton(onPressed: ()
+                async {     
+                }, child: Card(child: Text("completed"), color: (widget.data["status"] == "completed")? Colors.red: Colors.white)),
+                Spacer(),
+              ],
+            )
+            :
+            Row
+            (
+              children: 
+              [
+                Spacer(),
+                TextButton(onPressed: ()
+                async {
+                  await FirebaseFirestore.instance.collection("Record").doc(widget.data.id).update
+                  (
+                    {
+                      "status" : "pending"                      
+                    }
+                  );
+                  Navigator.pop(context);
+                }, child: Card(child: Text("pending"), color: (widget.data["status"] == "pending")? Colors.red: Colors.white)),
+                Spacer(),
+                TextButton(onPressed: ()
+                async {
+                  await FirebaseFirestore.instance.collection("Record").doc(widget.data.id).update
+                  (
+                    {
+                      "status" : "in progress"                      
+                    }
+                  );
+                  Navigator.pop(context);
+                }, child: Card(child: Text("in progress"), color: (widget.data["status"] == "in progress")? Colors.red: Colors.white)),
+                Spacer(),
+                TextButton(onPressed: ()
+                async {
+                  await FirebaseFirestore.instance.collection("Record").doc(widget.data.id).update
+                  (
+                    {
+                      "status" : "completed"                      
+                    }
+                  );
+                  Navigator.pop(context);
+                }, child: Card(child: Text("completed"), color: (widget.data["status"] == "completed")? Colors.red: Colors.white)),
+                Spacer(),
+              ],
+            ),
             SizedBox
             (
-              height: 500,
-              child: StreamBuilder(stream: FirebaseFirestore.instance.collection("Record").doc(widget.data.id).snapshots(), builder: (context, snapshot) {
+              height: 200,
+              child: StreamBuilder(stream: FirebaseFirestore.instance.collection("Record").doc(widget.data.id).collection("comment").orderBy("DateTime", descending: true).snapshots(), builder: (context, snapshot) {
                 if(!snapshot.hasData)
                 {
                   return CircularProgressIndicator();
                 }
 
-                final docs = snapshot.data;
+                final docs = snapshot.data!.docs;
 
-                return SizedBox();
+                return ListView.builder
+                (
+                  itemCount: docs.length,
+                  itemBuilder: (context, index) {
+                    final data = docs[index].data();
+                    return Card
+                    (
+                      child: ListTile
+                      (
+                        isThreeLine: true,
+                        // leading: Text("ID: ${data["ID"]}"),
+                        title: Text((Timestamp.fromMillisecondsSinceEpoch(data["DateTime"]).toDate().toString())),
+                        subtitle: Text(data["comment"]),
+                      ),
+                    );
+                  },
+                );
               },),
             ),
-            CupertinoTextField(),
-            TextButton(onPressed: (){}, child: Text("send comment")),
+            CupertinoTextField(controller: _commentController,),
+            TextButton(onPressed: ()
+            {
+              String commentText = _commentController.text;
+              if(commentText.length < 1)
+              {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("cant send empty comment")));
+                return;
+              }
+              DateTime currentDate = DateTime.now();
+
+              FirebaseFirestore.instance.collection("Record").doc(widget.data.id).collection("comment").doc().set
+              (
+                {
+                  "ID" : FirebaseAuth.instance.currentUser!.uid,
+                  "comment" : commentText,
+                  "DateTime" : currentDate.millisecondsSinceEpoch
+                }
+              );
+
+              _commentController.clear();
+
+            }, child: Text("send comment")),
           ],
         ),
       ),
